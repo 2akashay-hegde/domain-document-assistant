@@ -1,0 +1,14 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+sentence-transformers>=2.2.2
+chromadb>=0.4.15
+pymupdf>=1.23.0
+pymongo>=4.5.0
+python-dotenv>=1.0.0
+openai>=1.0.0
+langchain-text-splitters>=0.0.1
+pydantic>=2.0.0
+python-multipart>=0.0.6
+markdown>=3.4.0
+xhtml2pdf>=0.2.11
+

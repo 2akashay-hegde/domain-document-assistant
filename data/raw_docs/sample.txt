@@ -1,0 +1,17 @@
+Domain Knowledge Base — Artificial Intelligence & Machine Learning Guidelines
+
+1. Introduction to RAG Systems
+Retrieval-Augmented Generation (RAG) is an architectural pattern that enhances Large Language Models (LLMs) by retrieving facts from an external knowledge base. This ensures accurate responses based on domain-specific ground truth while reducing hallucinations.
+
+2. Document Ingestion Pipeline
+The document ingestion process involves three key steps:
+- Text Extraction: Converting raw formats (PDF, Markdown, TXT) into standardized clean text strings.
+- Text Chunking: Splitting text into overlapping segments (e.g., 300 to 500 tokens with 50-token overlap) to preserve semantic context across chunk boundaries.
+- Vector Embedding: Passing text chunks into pre-trained embedding models (such as sentence-transformers/all-MiniLM-L6-v2) to compute dense vector representations stored in a vector database like ChromaDB or FAISS.
+
+3. Database Architecture
+- ChromaDB handles high-dimensional vector similarity search.
+- MongoDB stores structured metadata, document records, question history logs, and user feedback ratings (thumb up/down scores).
+
+4. OpenAI LLM Integration
+When a user submits a query, top relevant context chunks are fetched via cosine similarity search. A prompt is compiled with system instructions, retrieved context, and the user's question, then dispatched to models like GPT-3.5-Turbo or GPT-4o for natural language synthesis.
