@@ -29,8 +29,11 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
+IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"]
+
+
 def extract_text_from_file(file_path: str) -> str:
-    """Extract text from PDF, Markdown, or plain text file."""
+    """Extract text from PDF, Markdown, plain text, or Image file."""
     ext = os.path.splitext(file_path)[1].lower()
     
     if ext == ".pdf":
@@ -43,6 +46,11 @@ def extract_text_from_file(file_path: str) -> str:
     elif ext in [".md", ".txt"]:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             return clean_text(f.read())
+
+    elif ext in IMAGE_EXTENSIONS:
+        from app.image_processor import extract_image_info_and_text
+        info = extract_image_info_and_text(file_path)
+        return info["summary_text"]
             
     else:
         raise ValueError(f"Unsupported file format: {ext}")
@@ -59,7 +67,7 @@ def chunk_text(text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> lis
 
 
 def process_single_file(file_path: str) -> dict:
-    """Ingest a single document file, compute embeddings, store in ChromaDB & MongoDB."""
+    """Ingest a single document or image file, compute embeddings, store in ChromaDB & MongoDB."""
     filename = os.path.basename(file_path)
     title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
     ext = os.path.splitext(file_path)[1].lower()
@@ -80,6 +88,13 @@ def process_single_file(file_path: str) -> dict:
             p_chunks = chunk_text(raw_text)
             for ch in p_chunks:
                 chunks_with_meta.append({"text": ch, "page": 1})
+    elif ext in IMAGE_EXTENSIONS:
+        from app.image_processor import extract_image_info_and_text
+        info = extract_image_info_and_text(file_path)
+        raw_summary = info["summary_text"]
+        p_chunks = chunk_text(raw_summary, chunk_size=800, chunk_overlap=100)
+        for ch in p_chunks:
+            chunks_with_meta.append({"text": ch, "page": 1})
     else:
         raise ValueError(f"Unsupported file format: {ext}")
         
@@ -130,11 +145,14 @@ def process_single_file(file_path: str) -> dict:
 
 
 def ingest_directory(dir_path: str = RAW_DOCS_DIR) -> list[dict]:
-    """Ingest all supported documents in the specified directory."""
+    """Ingest all supported documents and images in the specified directory."""
     if not os.path.exists(dir_path):
         os.makedirs(dir_path, exist_ok=True)
         
-    supported_extensions = ["*.pdf", "*.md", "*.txt"]
+    supported_extensions = [
+        "*.pdf", "*.md", "*.txt",
+        "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.tiff", "*.svg"
+    ]
     files_to_process = []
     for ext in supported_extensions:
         files_to_process.extend(glob.glob(os.path.join(dir_path, ext)))
@@ -148,3 +166,4 @@ def ingest_directory(dir_path: str = RAW_DOCS_DIR) -> list[dict]:
             results.append({"status": "error", "filename": os.path.basename(fpath), "error": str(e)})
             
     return results
+

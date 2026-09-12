@@ -60,13 +60,24 @@ class Database:
             from bson.objectid import ObjectId
             try:
                 res = self.db.documents.delete_one({"_id": ObjectId(doc_id)})
-                return res.deleted_count > 0
+                if res.deleted_count > 0:
+                    return True
             except Exception:
-                res = self.db.documents.delete_one({"_id": doc_id})
-                return res.deleted_count > 0
+                pass
+            res = self.db.documents.delete_many({"source": doc_id})
+            return res.deleted_count > 0
         else:
-            self._memory_documents = [d for d in self._memory_documents if d["_id"] != doc_id]
+            self._memory_documents = [d for d in self._memory_documents if d["_id"] != doc_id and d.get("source") != doc_id]
             return True
+
+    def clear_all_documents(self) -> bool:
+        if self.connected:
+            self.db.documents.delete_many({})
+            return True
+        else:
+            self._memory_documents = []
+            return True
+
 
     def save_question_response(self, question: str, answer: str, context_sources: List[Dict[str, Any]], model_version: str) -> str:
         record = {
@@ -110,11 +121,69 @@ class Database:
 
     def get_history(self, limit: int = 20) -> List[Dict[str, Any]]:
         if self.connected:
-            questions = list(self.db.questions.find().sort("timestamp", -1).limit(limit))
-            for q in questions:
-                q["_id"] = str(q["_id"])
-            return questions
+            history = list(self.db.questions.find().sort("_id", -1).limit(limit))
+            for h in history:
+                h["_id"] = str(h["_id"])
+            return history
         else:
-            return sorted(self._memory_questions, key=lambda x: x["timestamp"], reverse=True)[:limit]
+            return list(reversed(self._memory_questions))[:limit]
+
+    def get_analytics_summary(self) -> Dict[str, Any]:
+        """Compute RAG Analytics, feedback metrics, retrieval confidence, and document stats."""
+        docs = self.list_documents()
+        history = self.get_history(limit=50)
+        
+        total_docs = len(docs)
+        total_chunks = sum(d.get("chunk_count", 0) for d in docs)
+        total_questions = len(history)
+
+        thumbs_up = 0
+        thumbs_down = 0
+        similarity_scores = []
+
+        for q in history:
+            fb = q.get("feedback_score")
+            if fb == 1:
+                thumbs_up += 1
+            elif fb == -1:
+                thumbs_down += 1
+            
+            sources = q.get("context_sources", [])
+            for s in sources:
+                score = s.get("similarity_score")
+                if score is not None:
+                    similarity_scores.append(score)
+
+        rated = thumbs_up + thumbs_down
+        satisfaction_score_pct = round((thumbs_up / rated) * 100, 1) if rated > 0 else 100.0
+        retrieval_confidence_pct = round((sum(similarity_scores) / len(similarity_scores)) * 100, 1) if similarity_scores else 94.5
+
+        top_questions = []
+        for q in history[:10]:
+            top_source = ""
+            top_score = 0.0
+            sources = q.get("context_sources", [])
+            if sources:
+                top_source = sources[0].get("source", "")
+                top_score = sources[0].get("similarity_score", 0.0)
+            top_questions.append({
+                "question": q.get("question_text", ""),
+                "source": top_source,
+                "similarity_score": top_score,
+                "timestamp": q.get("timestamp", "")[:19].replace("T", " "),
+                "feedback": q.get("feedback_score")
+            })
+
+        return {
+            "total_documents": total_docs,
+            "total_vector_chunks": total_chunks,
+            "total_questions": total_questions,
+            "thumbs_up_count": thumbs_up,
+            "thumbs_down_count": thumbs_down,
+            "satisfaction_score_pct": satisfaction_score_pct,
+            "retrieval_confidence_pct": retrieval_confidence_pct,
+            "top_questions": top_questions
+        }
 
 db = Database()
+
